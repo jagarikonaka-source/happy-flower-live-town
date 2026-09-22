@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>happy flower Live town</title>
+    <link rel="shortcut icon" href="flower-mark.svg">
+    <link rel="stylesheet" href="TemplateData/style.css">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="happy flower Live town">
+    <script src="hiplin-multiplayer.js?v=4fa3761ea7fefca8118b504bc38cf6cefadcdccc2ee1e5ec07e3a404ac22edf5"></script>
+    <script src="hiplin-display.js?v=453dfa5ab73c16ed79783bf7dd6b80e70bb557ccad71977b64ff6b9f845aec21"></script>
+    <style>
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+      #unity-container.unity-desktop { position: fixed; inset: 0; left: 0; top: 0; transform: none; }
+      #unity-fullscreen-container, #unity-canvas { width: 100% !important; height: 100% !important; }
+      #unity-canvas { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      #unity-footer { display: none; }
+</style>
+  <meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="stylesheet" href="hiplin-loading.css?v=cf86b605d5d4eb056e45b54ba178e90bccbc824b99c9168ea4f2d52d1b9549f6">
+<script src="hiplin-loading.js?v=8f0ace7fc85e6adc575c43252c5e5b22a7c085a798fad59c834ab5e16529a89f"></script>
+    <script src="hiplin-device-build.js?v=23e865b78697a60300ee9589b6ae1e9a3b283367520e03b30653d59eedf14741"></script>
+    <script src="hiplin-startup-downloads.js?v=0d5ea5a3619d6d831cb79f6c1fd88e989a6612f9a5ce017b68f9b509c97c3d1a"></script>
+<script src="hiplin-graphics-trial.js?v=b88a9252ff6bc1e175ebe667eeb6d506e7bb7cdac635f184302b8e0dfeb37bc4"></script>
+<meta name="description" content="日常に少しの彩りを。花の広場でライブ、カフェやショップで寄り道。管理人 EMPEROR_YAMATO が迎える、音楽と交流の街。"><link rel="stylesheet" href="happy-flower.css?v=7bb55546b699e098275eba64a44fce1b90308fa1da4992e6657c7bbcebd58b50"></head>
+  <body>
+<section id="hiplin-loading" aria-labelledby="hiplin-loading-title">
+  <svg class="hiplin-paper-grain" aria-hidden="true" width="100%" height="100%">
+    <filter id="hiplin-paper-fibers"><feTurbulence type="fractalNoise" baseFrequency=".7" numOctaves="3" seed="8" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#hiplin-paper-fibers)"/>
+  </svg>
+  <header class="hiplin-loading-heading">
+    <p class="hiplin-loading-eyebrow">日常に少しの彩りを。</p>
+    <img class="flower-mark" src="flower-mark.svg" alt="HAPPY FLOWER LIVE"><h1 id="hiplin-loading-title">happy flower<span>Live town</span></h1><p class="hfl-owner">HOSTED BY EMPEROR_YAMATO</p>
+  </header>
+  <div class="hiplin-loading-content">
+    <div id="hiplin-loading-progress" role="progressbar" aria-label="街の読み込み" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="hiplin-walkway">
+        <div id="hiplin-walker">
+          <svg class="flower-loading-bloom" viewBox="0 0 100 100" aria-hidden="true"><g fill="#dbaa43"><ellipse cx="50" cy="27" rx="12" ry="22" transform="rotate(0 50 50)"/><ellipse cx="50" cy="27" rx="12" ry="22" transform="rotate(45 50 50)"/><ellipse cx="50" cy="27" rx="12" ry="22" transform="rotate(90 50 50)"/><ellipse cx="50" cy="27" rx="12" ry="22" transform="rotate(135 50 50)"/><ellipse cx="50" cy="27" rx="12" ry="22" transform="rotate(180 50 50)"/><ellipse cx="50" cy="27" rx="12" ry="22" transform="rotate(225 50 50)"/><ellipse cx="50" cy="27" rx="12" ry="22" transform="rotate(270 50 50)"/><ellipse cx="50" cy="27" rx="12" ry="22" transform="rotate(315 50 50)"/></g><circle cx="50" cy="50" r="15" fill="#4b5137"/></svg>
+        </div>
+      </div>
+      <div class="hiplin-track"><div id="hiplin-loading-fill"></div></div>
+      <div class="hiplin-loading-caption"><span id="hiplin-loading-status" role="status">街を準備しています…</span><span id="hiplin-loading-percent" aria-hidden="true">0%</span></div>
+    </div>
+    <button id="hiplin-loading-retry" type="button" hidden>もう一度読み込む</button>
+    <p class="hiplin-loading-note">NOW LOADING <span>読み込みが終わると、自動で街へ入ります。</span></p>
+  </div>
+</section>
+
+    <div id="unity-container" class="unity-desktop">
+      <div id="unity-fullscreen-container">
+        <canvas id="unity-canvas" width="960" height="600" tabindex="-1"></canvas>
+        <div id="unity-loading-container">
+          <div id="unity-loading-bar">
+            <div id="unity-logo"></div>
+            <div id="unity-progress-bar-empty">
+              <div id="unity-progress-bar-full"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="unity-warning"> </div>
+      <div id="unity-footer">
+        <div id="unity-logo-title-footer"></div>
+        <div id="unity-fullscreen-button"></div>
+        <div id="unity-build-title">happy flower Live town</div>
+      </div>
+    </div>
+    <script>
+      let canvas = document.querySelector("#unity-canvas");
+      let fullscreenContainer = document.querySelector("#unity-fullscreen-container");
+
+      // Shows a temporary message banner/ribbon for a few seconds, or
+      // a permanent error message on top of the canvas if type=='error'.
+      // If type=='warning', a yellow highlight color is used.
+      // Modify or remove this function to customize the visually presented
+      // way that non-critical warnings and error messages are presented to the
+      // user.
+      function unityShowBanner(msg, type) {
+        var warningBanner = document.querySelector("#unity-warning");
+        function updateBannerVisibility() {
+          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+        }
+        var div = document.createElement('div');
+        div.innerHTML = msg;
+        warningBanner.appendChild(div);
+        if (type == 'error') div.style = 'background: red; padding: 10px;';
+        else {
+          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
+          setTimeout(function() {
+            warningBanner.removeChild(div);
+            updateBannerVisibility();
+          }, 5000);
+        }
+        updateBannerVisibility();
+      }
+
+      var buildUrl = "Build";
+      var loaderUrl = "Build/HappyFlowerLive/HappyFlowerLiveTown.loader.js?v=be4524afa0285ee88f0b1acacef6cdc4d6aec1b68452234e0aa6b6146b6564c8";
+      var config = {
+        arguments: [],
+        dataUrl: "Build/HappyFlowerLive/HappyFlowerLiveTown.data.unityweb?v=97ad656a6b0b00e958ba043fe10bde804882f07d6c920536e822a7d6108955a7",
+        frameworkUrl: "Build/HappyFlowerLive/HappyFlowerLiveTown.framework.js.unityweb?v=3bc8a2d8865227fdfb53510bd4d1d4851cea83393fcab1f3c4a1e3cf9e6a3b86",
+        codeUrl: "Build/HappyFlowerLive/HappyFlowerLiveTown.wasm.unityweb?v=88578d53c8c1e8134e70a7c64b2d72fedb474867cdc737e4cd5ca1ce118e127a",
+        streamingAssetsUrl: "StreamingAssets",
+
+        // If you have a custom web site structure, or want to place multiple Unity build instances on the same page,
+        // you can pass fullscreenElementID: "my-unity-fullscreen-container-id", in this configuration field to
+        // explicitly point to the element tree root that is displayed in fullscreen mode.
+        fullscreenElementID: "unity-fullscreen-container",
+
+        companyName: "HappyFlowerLive",
+        productName: "happy flower Live town",
+        productVersion: "0.1.0",
+        showBanner: unityShowBanner,
+        // errorHandler: function(err, url, line) {
+        //    alert("error " + err + " occurred at line " + line);
+        //    // Return 'true' if you handled this error and don't want Unity
+        //    // to process it further, 'false' otherwise.
+        //    return true;
+        // },
+      };
+
+      // By default, Unity keeps WebGL canvas render target size matched with
+      // the DOM size of the canvas element (scaled by window.devicePixelRatio)
+      // Set this to false if you want to decouple this synchronization from
+      // happening inside the engine, and you would instead like to size up
+      // the canvas DOM size and WebGL render target sizes yourself.
+      // config.matchWebGLToCanvasSize = false;
+
+      // If you would like all file writes inside Unity Application.persistentDataPath
+      // directory to automatically persist so that the contents are remembered when
+      // the user revisits the site the next time, uncomment the following line:
+      config.autoSyncPersistentDataPath = true;
+      // Keep fixed-pixel Unity controls readable on high-DPI displays.
+      config.devicePixelRatio = 1;
+      // This autosyncing is currently not the default behavior to avoid regressing
+      // existing user projects that might rely on the earlier manual
+      // JS_FileSystem_Sync() behavior, but in future Unity version, this will be
+      // expected to change.
+
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        // Mobile device style: fill the whole browser client area with the game canvas:
+
+        var meta = document.createElement('meta');
+        meta.name = 'viewport';
+        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes, viewport-fit=cover';
+        document.getElementsByTagName('head')[0].appendChild(meta);
+        document.querySelector("#unity-container").className = "unity-mobile";
+        canvas.className = "unity-mobile";
+
+        // To lower canvas resolution on mobile devices to gain some
+        // performance, uncomment the following line:
+        // config.devicePixelRatio = 1;
+
+
+      } else {
+        // Desktop style: Render the game canvas container in a window that can be maximized to fullscreen:
+        fullscreenContainer.style.width = "100vw";
+        fullscreenContainer.style.height = "100vh";
+      }
+
+
+      // HIPLIN device build selection begin
+      var mobileBuild = {
+        loaderUrl: "Build/HappyFlowerLive/HappyFlowerLiveTown.loader.js?v=be4524afa0285ee88f0b1acacef6cdc4d6aec1b68452234e0aa6b6146b6564c8",
+        dataUrl: "Build/HappyFlowerLive/HappyFlowerLiveTown.data.unityweb?v=97ad656a6b0b00e958ba043fe10bde804882f07d6c920536e822a7d6108955a7",
+        frameworkUrl: "Build/HappyFlowerLive/HappyFlowerLiveTown.framework.js.unityweb?v=3bc8a2d8865227fdfb53510bd4d1d4851cea83393fcab1f3c4a1e3cf9e6a3b86",
+        codeUrl: "Build/HappyFlowerLive/HappyFlowerLiveTown.wasm.unityweb?v=88578d53c8c1e8134e70a7c64b2d72fedb474867cdc737e4cd5ca1ce118e127a"
+      };
+      var deviceBuild = window.HiplinDeviceBuild.select();
+      if (deviceBuild === "astc") {
+        loaderUrl = mobileBuild.loaderUrl;
+        config.dataUrl = mobileBuild.dataUrl;
+        config.frameworkUrl = mobileBuild.frameworkUrl;
+        config.codeUrl = mobileBuild.codeUrl;
+      }
+      console.info("HIPLIN texture profile: " + deviceBuild);
+      // HIPLIN device build selection end
+      // HIPLIN streamed startup begin
+      var restoreStartupDownloads = function () {};
+      if (deviceBuild === "astc") {
+        restoreStartupDownloads = window.HiplinStartupDownloads.install(config, {
+          "Build/HappyFlowerLive/HappyFlowerLiveTown.data.unityweb?v=97ad656a6b0b00e958ba043fe10bde804882f07d6c920536e822a7d6108955a7": 228226573,
+          "Build/HappyFlowerLive/HappyFlowerLiveTown.framework.js.unityweb?v=3bc8a2d8865227fdfb53510bd4d1d4851cea83393fcab1f3c4a1e3cf9e6a3b86": 363628,
+          "Build/HappyFlowerLive/HappyFlowerLiveTown.wasm.unityweb?v=88578d53c8c1e8134e70a7c64b2d72fedb474867cdc737e4cd5ca1ce118e127a": 39679783
+        });
+      }
+      // HIPLIN streamed startup end
+      var script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onerror = () => { restoreStartupDownloads(); window.HiplinLoading.fail(); };
+      script.onload = () => {
+        const loadingContainer = document.querySelector("#unity-loading-container");
+        const progressBarFull = document.querySelector("#unity-progress-bar-full");
+
+        createUnityInstance(canvas, config, (progress) => {
+          window.HiplinLoading.progress(progress);
+          if (progress < 1) {
+            loadingContainer.style.display = "block";
+            progressBarFull.style.width = 100 * progress + "%";
+          } else {
+            loadingContainer.style.display = "none";
+          }
+        }).then((unityInstance) => {
+                restoreStartupDownloads();
+                window.HiplinLoading.ready();
+                window.HiplinGraphicsTrial.ready(unityInstance,deviceBuild);
+                window.HiplinDisplay.ready();
+                document.querySelector("#unity-fullscreen-button").onclick = () => {
+                  unityInstance.SetFullscreen(1);
+                };
+
+              }).catch((message) => {
+                window.HiplinGraphicsTrial.fail();
+                restoreStartupDownloads();
+                window.HiplinLoading.fail();
+                alert(message);
+              });
+            };
+
+      if (deviceBuild === "astc") document.body.appendChild(script);
+      else { window.HiplinLoading.fail(); window.HiplinGraphicsTrial.unsupported(); }
+
+    </script>
+  </body>
+</html>

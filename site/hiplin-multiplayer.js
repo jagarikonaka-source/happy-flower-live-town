@@ -1,0 +1,353 @@
+(function (global) {
+  'use strict';
+  // Browser transport only. All character rendering stays in Unity.
+  function roomFor(url) {
+    const path = url.pathname.replace(/\/index\.html$/, '/').replace(/\/+$/, '') || '/';
+    const room = url.searchParams.get('room');
+    return '/happy-flower-live-town' + path + (room ? '?room=' + encodeURIComponent(room.slice(0, 64)) : '');
+  }
+  function createClient(options) {
+    const location = new URL(options.url);
+    const endpoint = new URL(options.endpoint || '/multiplayer', location);
+    endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : endpoint.protocol === 'http:' ? 'ws:' : endpoint.protocol;
+    if (!['ws:', 'wss:'].includes(endpoint.protocol) || (location.protocol === 'https:' && endpoint.protocol !== 'wss:')) throw new Error('Secure WebSocket endpoint required');
+    const Socket = options.WebSocket || global.WebSocket;
+    const callback = options.message || function () {};
+    const status = options.status || function () {};
+    let socket, latest, appearanceKey, joined = false, stopped = false, retry, watchdog;
+    let attempt = 0, lastReceived = 0;
+    const peers = new Set();
+    function connect() {
+      if (stopped || !latest) return;
+      status('connecting', 0);
+      socket = new Socket(endpoint.href);
+      const current = socket;
+      lastReceived = Date.now();
+      socket.onopen = () => {
+        if (socket !== current || stopped) return;
+        appearanceKey = JSON.stringify(latest.appearance);
+        socket.send(JSON.stringify({ type: 'hello', protocol: 1, characterRoster: 2, appearanceVersion: latest.appearance.schemaVersion >= 10 ? 10 : 9,
+          name: options.name, room: roomFor(location), state: latest.state, appearance: latest.appearance }));
+      };
+      socket.onmessage = event => {
+        if (socket !== current || stopped) return;
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
+        if ((data.type === 'welcome' || data.type === 'snapshot') && !Array.isArray(data.players)) return;
+        if ((data.type === 'joined' || data.type === 'appearance') && (!data.player || typeof data.player.id !== 'string')) return;
+        if (data.type === 'welcome' && typeof data.id !== 'string') return;
+        lastReceived = Date.now();
+        if (data.type === 'welcome') {
+          joined = true; attempt = 0; peers.clear();
+          for (const player of data.players) if (player && typeof player.id === 'string' && player.id !== data.id) peers.add(player.id);
+        } else if (data.type === 'joined') peers.add(data.player.id);
+        else if (data.type === 'left') peers.delete(data.id);
+        else if (data.type === 'error') { status(data.reason === 'room-full' ? 'full' : 'offline', 0); }
+        if (joined) status('online', peers.size + 1);
+        callback(event.data);
+      };
+      socket.onerror = () => {}; // onclose owns recovery, including handshake failures.
+      socket.onclose = event => {
+        if (socket !== current || stopped) return;
+        joined = false; peers.clear(); callback(JSON.stringify({ type: 'disconnected' }));
+        status(event.code === 1013 ? 'full' : 'offline', 0);
+        clearInterval(watchdog);
+        const delay = Math.min(30000, 1000 * Math.pow(2, attempt++)) + Math.random() * 500;
+        retry = setTimeout(connect, delay);
+      };
+      watchdog = setInterval(() => {
+        if (Date.now() - lastReceived > 15000 && socket === current) socket.close();
+      }, 2000);
+    }
+    return {
+      arena(command) {
+        if (!joined || socket.readyState !== 1 || socket.bufferedAmount > 32768) return false;
+        socket.send(JSON.stringify({ ...command, type: 'arena-command' })); return true;
+      },
+      chat(text) {
+        if (!joined || socket.readyState !== 1 || socket.bufferedAmount > 32768) return false;
+        socket.send(JSON.stringify({ type: 'chat', text })); return true;
+      },
+      update(json) {
+        latest = typeof json === 'string' ? JSON.parse(json) : json;
+        if (!socket && !stopped) { connect(); return; }
+        if (!joined || socket.readyState !== 1 || socket.bufferedAmount > 32768) return;
+        const key = JSON.stringify(latest.appearance);
+        socket.send(JSON.stringify({ type: 'state', state: latest.state, ...(key !== appearanceKey ? { appearance: latest.appearance } : {}) }));
+        appearanceKey = key;
+      },
+      stop() {
+        stopped = true; joined = false; clearTimeout(retry); clearInterval(watchdog);
+        if (socket) socket.close(); peers.clear();
+      },
+      get connected() { return joined; }
+    };
+  }
+  let client, callback, pending, configRetry, generation = 0, displayName, chatUI;
+  function setupChat() {
+    if (chatUI) return;
+    const doc = global.document;
+    const root = doc.createElement('section'); root.setAttribute('aria-label', 'ロビーチャット');
+    root.style.cssText = 'position:fixed;inset:0;z-index:20;pointer-events:none;font:14px system-ui,sans-serif;--hiplin-paper:url("paper-ui.png");text-shadow:none';
+    const style = doc.createElement('style');
+    style.textContent = `
+      #hiplin-chat-overlay[hidden], #hiplin-chat-launcher[hidden], #hiplin-chat-unread[hidden], #hiplin-chat-feed[hidden] { display:none!important; }
+      [aria-label="ロビーチャット"][hidden] { display:none!important; }
+      #hiplin-chat-launcher { position:fixed;left:calc(64px + env(safe-area-inset-left));top:calc(8px + env(safe-area-inset-top));height:44px;width:80px;padding:0 6px;border:1px solid #c9d2cc55;box-sizing:border-box;border-radius:6px;background:#17211ee6;color:#f3f5ee;cursor:pointer;pointer-events:auto;touch-action:manipulation;font:13px system-ui;white-space:nowrap; }
+      #hiplin-chat-unread { position:absolute;right:-3px;top:-5px;min-width:16px;padding:1px 4px;box-sizing:border-box;border-radius:9px;background:#67746a;color:#fff;text-shadow:none;font:11px system-ui; }
+      /* Overlay only the visible panel: no full-width footer or invisible hit surface. */
+      #hiplin-chat-feed { position:fixed;left:max(12px,env(safe-area-inset-left));top:calc(68px + env(safe-area-inset-top));display:flex;flex-direction:column;width:360px;max-width:calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));height:238px;max-height:calc(100dvh - 84px);box-sizing:border-box;border:1px solid #c9d2cc55;border-radius:6px;background:#111b18d9;color:#f3f5ee;pointer-events:auto;box-shadow:0 3px 14px #0003;color-scheme:dark; }
+      #hiplin-chat-feed header { display:flex;align-items:center;gap:2px;min-height:44px;padding:0 6px 0 12px;border-bottom:1px solid #c9d2cc2e; }
+      #hiplin-chat-feed header strong { flex:1;min-width:0;font-size:13px;overflow-wrap:anywhere; }
+      #hiplin-chat-feed-empty { margin:0;padding:10px 12px;color:#d8e0da;font-size:13px;line-height:1.5; }
+      #hiplin-chat-feed-empty[hidden] { display:none; }
+      #hiplin-chat-first-help { margin:0;padding:8px 12px;min-height:26px;flex:0 1 auto;overflow:auto;overscroll-behavior:contain;white-space:pre-line;font:14px/1.5 system-ui;color:#fff0c6; }
+      #hiplin-chat-first-help[hidden] { display:none; }
+      #hiplin-chat-feed[data-first-visit] #hiplin-chat-feed-empty { display:none; }
+      #hiplin-chat-feed[data-first-visit] { height:min(360px,calc(100dvh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));max-height:calc(100dvh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+      #hiplin-chat-feed button { min-width:44px;min-height:44px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:#f3f5ee;font:13px system-ui;cursor:pointer;touch-action:manipulation; }
+      #hiplin-chat-feed button:hover, #hiplin-chat-launcher:hover { background:#34473ff5; }
+      #hiplin-chat-feed button:active { background:#4b6056; }
+      #hiplin-chat-feed-log { flex:1;min-height:0;min-width:0;padding:4px 12px;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.55 system-ui;scrollbar-width:thin; }
+      #hiplin-chat-feed-log > div { padding:2px 0;content-visibility:auto;contain-intrinsic-size:auto 24px; }
+      #hiplin-chat-feed form { flex-shrink:0;padding:6px;gap:6px;border-top:1px solid #c9d2cc2e; }
+      #hiplin-chat-feed input { height:44px;background:#0d1512c9;color:#fff;border-color:#a8b9ae88!important; }
+      #hiplin-chat-feed form button { background:#415c4ef2; }
+      #hiplin-chat-feed input::placeholder { color:#cad4cc;opacity:1; }
+      #hiplin-chat-feed:focus-within { border-color:#ead59b; }
+      @media (pointer:coarse), (max-width:900px) {
+        #hiplin-chat-feed { width:320px;height:210px;max-height:calc(100dvh - 220px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+      }
+      @media (orientation:portrait) {
+        /* Leave the same right-hand camera/action rail as TownHudLayout. */
+        #hiplin-chat-feed { width:min(320px,calc(100vw - 140px - env(safe-area-inset-left) - env(safe-area-inset-right))); }
+      }
+      @media (max-height:440px) and (orientation:landscape) {
+        #hiplin-chat-feed { width:300px;height:166px;max-height:calc(100dvh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+        #hiplin-chat-feed-empty { padding:4px 12px; }
+      }
+      [aria-label="ロビーチャット"][data-editing] #hiplin-chat-feed { top:calc(var(--chat-viewport-top,0px) + 68px + env(safe-area-inset-top));max-height:var(--chat-visible-height,calc(100dvh - 84px)); }
+      #hiplin-chat-overlay { position:fixed;inset:0;box-sizing:border-box;padding:12px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));display:grid;place-items:end center;background:#20170f66;pointer-events:auto; }
+      #hiplin-chat-panel { width:min(520px,100%);max-height:min(420px,100%);overflow:auto;overscroll-behavior:contain;box-sizing:border-box;padding:16px;border:1px solid #bdab8c;border-radius:4px;background:#f5ead5 var(--hiplin-paper) center/700px;color:#40362b;box-shadow:0 12px 48px #0006; }
+      #hiplin-chat-panel button { min-height:44px;cursor:pointer;touch-action:manipulation; }
+      #hiplin-chat-panel input { box-sizing:border-box;width:100%;background:#faf2e1;color:#40362b; }
+      #hiplin-chat-panel form button { background:#e8d8b9;color:#71371f; }
+      #hiplin-chat-launcher:focus-visible, #hiplin-chat-feed :focus-visible { outline:2px solid #ffe398;outline-offset:-2px; }
+      #hiplin-chat-panel :focus-visible { outline:3px solid #a44529;outline-offset:2px; }
+    `;
+    doc.head.append(style);
+    const launcher = doc.createElement('button'); launcher.id = 'hiplin-chat-launcher'; launcher.type = 'button';
+    launcher.textContent = 'チャット'; launcher.title = 'チャットを表示'; launcher.setAttribute('aria-label', 'チャットを表示');
+    launcher.setAttribute('aria-expanded', 'false'); launcher.setAttribute('aria-controls', 'hiplin-chat-feed');
+    const unread = doc.createElement('span'); unread.id = 'hiplin-chat-unread'; unread.hidden = true; unread.setAttribute('aria-hidden', 'true'); launcher.append(unread);
+    const feed = doc.createElement('aside'); feed.id = 'hiplin-chat-feed'; feed.setAttribute('aria-label', '新着チャット');
+    const feedHeader = doc.createElement('header');
+    const feedTitle = doc.createElement('strong'); feedTitle.id = 'hiplin-chat-title'; feedTitle.textContent = 'チャット';
+    const expandFeed = doc.createElement('button'); expandFeed.type = 'button'; expandFeed.textContent = '拡大'; expandFeed.setAttribute('aria-label', 'チャットを広げる'); expandFeed.setAttribute('aria-haspopup', 'dialog'); expandFeed.setAttribute('aria-controls', 'hiplin-chat-panel');
+    const hideFeed = doc.createElement('button'); hideFeed.type = 'button'; hideFeed.textContent = '隠す'; hideFeed.title = 'チャットを隠す'; hideFeed.setAttribute('aria-label', 'チャットを隠す');
+    feedHeader.append(feedTitle, expandFeed, hideFeed);
+    const feedEmpty = doc.createElement('p'); feedEmpty.id = 'hiplin-chat-feed-empty'; feedEmpty.textContent = '入室すると、ここに会話が表示されます。';
+    const feedLog = doc.createElement('div'); feedLog.id = 'hiplin-chat-feed-log'; feedLog.setAttribute('role', 'log'); feedLog.setAttribute('aria-live', 'polite'); feedLog.setAttribute('aria-label', '最近のメッセージ'); feedLog.tabIndex = 0;
+    const firstHelp = doc.createElement('p'); firstHelp.id = 'hiplin-chat-first-help'; firstHelp.hidden = true;
+    firstHelp.textContent = '① ニックネームを書いて「入室」\n② 発言したいときだけ「送信」\n本名や連絡先は書かないでね。\n入室しなくても「隠す」で案内へ戻れるよ。';
+    feed.append(feedHeader, firstHelp, feedEmpty, feedLog);
+    const overlay = doc.createElement('div'); overlay.id = 'hiplin-chat-overlay'; overlay.hidden = true;
+    const panel = doc.createElement('div'); panel.id = 'hiplin-chat-panel'; panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-labelledby', 'hiplin-chat-heading');
+    const heading = doc.createElement('strong'); heading.textContent = '名前を入力して入室';
+    heading.id = 'hiplin-chat-heading';
+    heading.style.cssText = 'min-width:0;overflow-wrap:anywhere';
+    const header = doc.createElement('div'); header.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:space-between;position:sticky;top:-16px;background:#f5ead5 var(--hiplin-paper) center/700px;z-index:1';
+    const close = doc.createElement('button'); close.type = 'button'; close.textContent = '閉じる'; close.setAttribute('aria-label', 'チャットを閉じる');
+    close.style.cssText = 'flex-shrink:0;padding:4px 8px;border:0;border-radius:6px;background:#e8d8b9 var(--hiplin-paper) center/700px;color:#40362b;box-shadow:inset 1px 1px 3px #6d553133';
+    header.append(heading, close);
+    const note = doc.createElement('p'); note.textContent = '同じロビーの人に名前とメッセージが表示されます。名前は20文字まで。';
+    const status = doc.createElement('div'); status.id = 'hiplin-online';
+    status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+    status.style.cssText = 'font-size:12px;margin:8px 0;color:#6d5e4d;overflow-wrap:anywhere';
+    const log = doc.createElement('div'); log.setAttribute('role', 'log'); log.setAttribute('aria-live', 'polite');
+    log.style.cssText = 'max-height:160px;overflow:auto;overflow-wrap:anywhere;white-space:pre-wrap;margin:8px 0';
+    const form = doc.createElement('form'); form.style.cssText = 'display:flex;gap:6px';
+    const input = doc.createElement('input'); input.maxLength = 40; input.placeholder = '名前を入力して入室…'; input.setAttribute('aria-label', '表示名'); input.name = 'chat-name'; input.autocomplete = 'off'; input.spellcheck = false;
+    input.style.cssText = 'box-sizing:border-box;min-width:0;flex:1;padding:9px;border:1px solid #bdab8c;border-radius:3px;font:16px system-ui;';
+    const button = doc.createElement('button'); button.type = 'submit'; button.textContent = '入室';
+    button.style.cssText = 'padding:8px;border:0;border-radius:4px;font:13px system-ui;';
+    form.append(input, button); feed.append(form); panel.append(header, note, status, log); overlay.append(panel); root.append(launcher, feed, overlay); doc.body.append(root);
+    let expanded = false, outdoors = false, feedHidden = true, unreadCount = 0, selfId, focused = false, composing = false;
+    try { feedHidden = global.localStorage.getItem('happy-flower-chat-hidden') !== 'false'; } catch (_) {}
+    root.hidden = true;
+    const blocked = () => !outdoors || doc.documentElement.hasAttribute('data-hiplin-sphere-clean-view') || doc.documentElement.hasAttribute('data-hiplin-arcade');
+    const focus = value => { if (focused === value) return; focused = value; if (callback) callback(JSON.stringify({ type: 'chat-focus', focused: value })); };
+    let publishedPanelVisibility;
+    function syncFeed() {
+      const wasVisible = !root.hidden && !feed.hidden;
+      root.hidden = blocked();
+      doc.documentElement.removeAttribute('data-hiplin-chat-docked');
+      feed.hidden = expanded || feedHidden;
+      feed.toggleAttribute('data-has-messages', feedLog.children.length > 0);
+      launcher.hidden = expanded || !feedHidden;
+      if (!blocked() && !doc.hidden && (expanded || !feedHidden)) unreadCount = 0;
+      unread.hidden = unreadCount === 0;
+      unread.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+      launcher.setAttribute('aria-expanded', String(!feedHidden));
+      launcher.setAttribute('aria-label', 'チャットを表示' + (unreadCount ? '（新着' + unreadCount + '件）' : ''));
+      if (!root.hidden && !feed.hidden && !wasVisible) feedLog.scrollTop = feedLog.scrollHeight;
+      const panelVisible = !root.hidden && (expanded || !feedHidden);
+      // Distinct from focus: reading chat hides competing cards, not movement.
+      if (callback && publishedPanelVisibility !== panelVisible) {
+        publishedPanelVisibility = panelVisible;
+        callback(JSON.stringify({ type: 'chat-panel', visible: panelVisible }));
+      }
+    }
+    function setFeedHidden(value) {
+      if (root.contains(doc.activeElement)) doc.activeElement.blur();
+      focus(false); root.removeAttribute('data-editing');
+      feedHidden = value;
+      try { global.localStorage.setItem('happy-flower-chat-hidden', String(value)); } catch (_) {}
+      syncFeed(); doc.getElementById('unity-canvas')?.focus();
+    }
+    function expand() {
+      if (blocked() || expanded) return;
+      expanded = true; overlay.hidden = false; panel.append(form); syncFeed();
+      focus(true); input.focus(); log.scrollTop = log.scrollHeight;
+    }
+    function collapse() {
+      if (!expanded && !focused) return;
+      expanded = false; input.blur(); overlay.hidden = true; feed.append(form); root.removeAttribute('data-editing'); syncFeed();
+      focus(false); doc.getElementById('unity-canvas')?.focus();
+    }
+    launcher.addEventListener('click', () => setFeedHidden(false)); hideFeed.addEventListener('click', () => setFeedHidden(true));
+    expandFeed.addEventListener('click', expand); close.addEventListener('click', collapse);
+    overlay.addEventListener('click', event => { if (event.target === overlay) collapse(); });
+    // Pause while typing, operating the panel, or in the expanded dialog. Outside
+    // the actual visible elements the root never owns pointer/touch input.
+    root.addEventListener('focusin', () => focus(true));
+    root.addEventListener('focusout', () => queueMicrotask(() => { if (!expanded && !root.contains(doc.activeElement)) { focus(false); root.removeAttribute('data-editing'); } }));
+    root.addEventListener('pointerdown', () => focus(true));
+    doc.addEventListener('pointerdown', event => { if (!expanded && !root.contains(event.target)) { if (root.contains(doc.activeElement)) doc.activeElement.blur(); focus(false); root.removeAttribute('data-editing'); } }, true);
+    for (const type of ['keydown', 'keyup', 'pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchend', 'touchmove', 'wheel', 'click']) root.addEventListener(type, event => event.stopPropagation());
+    root.addEventListener('keydown', event => { if (!expanded && event.key === 'Escape' && !event.isComposing && !composing) { event.preventDefault(); collapse(); } });
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); collapse(); }
+      if (event.key === 'Tab') {
+        if (event.shiftKey && doc.activeElement === close) { event.preventDefault(); button.focus(); }
+        else if (!event.shiftKey && doc.activeElement === button) { event.preventDefault(); close.focus(); }
+      }
+    });
+    new MutationObserver(() => { if (blocked()) collapse(); syncFeed(); }).observe(doc.documentElement, { attributes: true, attributeFilter: ['data-hiplin-sphere-clean-view', 'data-hiplin-arcade'] });
+    doc.addEventListener('visibilitychange', syncFeed);
+    // iPhone's keyboard changes the visual viewport without resizing the game canvas.
+    function fitViewport() {
+      const viewport = global.visualViewport;
+      if (viewport) {
+        overlay.style.top = viewport.offsetTop + 'px'; overlay.style.height = viewport.height + 'px'; overlay.style.bottom = 'auto';
+        if (expanded && doc.activeElement === input) input.scrollIntoView({ block: 'nearest' });
+        root.style.setProperty('--chat-viewport-top', viewport.offsetTop + 'px');
+        root.style.setProperty('--chat-visible-height', Math.max(100, viewport.height - 84) + 'px');
+      }
+    }
+    global.visualViewport?.addEventListener('resize', fitViewport);
+    global.visualViewport?.addEventListener('scroll', fitViewport); fitViewport();
+    const line = text => {
+      for (const target of [log, feedLog]) {
+        const follow = target.scrollHeight - target.scrollTop - target.clientHeight < 28;
+        const row = doc.createElement('div'); row.textContent = text; target.append(row);
+        while (target.children.length > 100) target.firstChild.remove();
+        if (follow) target.scrollTop = target.scrollHeight;
+      }
+      feedEmpty.hidden = true;
+    };
+    input.addEventListener('focus', () => { root.setAttribute('data-editing', ''); focus(true); fitViewport(); });
+    input.addEventListener('compositionstart', () => { composing = true; });
+    input.addEventListener('compositionend', () => { composing = false; });
+    input.addEventListener('keydown', event => {
+      if ((event.isComposing || composing || event.keyCode === 229) && event.key === 'Enter') event.preventDefault();
+    });
+    doc.addEventListener('keydown', event => {
+      if (blocked() || expanded) return;
+      if (event.key === 'Enter' && !event.isComposing && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey &&
+          (doc.activeElement === doc.body || doc.activeElement === doc.getElementById('unity-canvas'))) {
+        event.preventDefault(); event.stopImmediatePropagation(); setFeedHidden(false); input.focus();
+      }
+    }, true);
+    form.addEventListener('submit', event => {
+      event.preventDefault(); if (composing) return; const text = input.value.trim();
+      if (!displayName) {
+        if (!text || [...text].length > 20 || /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(text)) { note.textContent = '名前は1〜20文字で入力してください。'; line(note.textContent); input.focus(); return; }
+        displayName = text; heading.textContent = 'ロビーチャット · ' + displayName;
+        feedEmpty.textContent = 'まだメッセージはありません。';
+        note.textContent = 'Enterで入力・送信 / Escで閉じる · 履歴はページを閉じるまで';
+        input.value = ''; input.maxLength = 400; input.placeholder = 'メッセージを入力…'; input.name = 'chat-message'; input.setAttribute('aria-label', 'メッセージ（200文字まで）'); button.textContent = '送信';
+        global.HiplinMultiplayer.start(callback); collapse();
+      } else {
+        if (!text || [...text].length > 200) { line('200文字以内で入力してください。'); return; }
+        if (!client?.chat(text)) { line('接続待ちです。オンラインになってから送信してください。'); return; }
+        input.value = ''; input.focus();
+      }
+    });
+    chatUI = { setOutdoor(value, firstVisit) {
+      firstHelp.hidden = firstVisit !== true;
+      feed.toggleAttribute('data-first-visit', firstVisit === true);
+      outdoors = value === true;
+      if (!outdoors) collapse();
+      syncFeed();
+    }, receive(data) {
+      if (data.type === 'welcome') selfId = data.id;
+      if (data.type === 'chat') {
+        line(data.name + '：' + data.text);
+        if (data.senderId !== selfId && (doc.hidden || blocked() || (!expanded && feedHidden))) unreadCount++;
+        syncFeed();
+      }
+      if (data.type === 'chat-error') line(data.reason === 'rate-limit' ? '少し待ってから送信してください（10秒に5件まで）。' : 'メッセージを送信できませんでした。');
+    } };
+  }
+  function showStatus(state, count) {
+    const badge = global.document.getElementById('hiplin-online');
+    if (!badge) return;
+    const labels = { online: '● オンライン · ' + count + '人', connecting: '○ みんなの街に接続中', offline: '○ ひとりで散策中 · 再接続しています', full: '○ 満員です · 空きを待っています', unconfigured: '○ ひとりで散策中 · 通信設定を確認してください' };
+    const text = state === 'unjoined' ? '○ 未入室 · ひとりで散策できます' : labels[state] || labels.offline;
+    if (badge.textContent !== text) badge.textContent = text;
+    const title = global.document.getElementById('hiplin-chat-title');
+    if (title) { title.textContent = state === 'online' ? 'チャット · ' + count + '人' : 'チャット'; title.title = text; }
+    badge.style.color = state === 'online' ? '#48623c' : '#6d5e4d';
+  }
+  global.HiplinMultiplayer = {
+    createClient, roomFor,
+    arena(json) {
+      try { return client?.arena(typeof json === 'string' ? JSON.parse(json) : json) || false; }
+      catch (_) { return false; }
+    },
+    async start(receiver) {
+      this.stop(); const current = ++generation; callback = receiver;
+      setupChat();
+      if (!displayName) { showStatus('unjoined', 0); return; }
+      showStatus('connecting', 0);
+      try {
+        const response = await global.fetch(new URL('multiplayer-config.json', global.location.href), { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error('Configuration unavailable');
+        const config = await response.json();
+        if (current !== generation) return;
+        client = createClient({ url: global.location.href, endpoint: config.endpoint, name: displayName,
+          message: json => { const data = JSON.parse(json); chatUI.receive(data); callback(json); }, status: showStatus });
+        if (pending) client.update(pending);
+      } catch {
+        if (current === generation) {
+          showStatus('unconfigured', 0);
+          // A sleeping host or a temporary config fetch failure must recover without a page reload.
+          configRetry = setTimeout(() => { if (current === generation) global.HiplinMultiplayer.start(receiver); }, 15000);
+        }
+      }
+    },
+    update(json) {
+      pending = json;
+      try { const state = JSON.parse(json); chatUI?.setOutdoor(state.isOutdoors, state.firstVisitChat); } catch (_) { chatUI?.setOutdoor(false); }
+      if (client) client.update(json);
+    },
+    stop() { generation++; clearTimeout(configRetry); if (client) client.stop(); client = null; pending = null; }
+  };
+  if (global.addEventListener) {
+    global.addEventListener('pagehide', () => global.HiplinMultiplayer.stop());
+    global.addEventListener('pageshow', event => { if (event.persisted && callback) global.HiplinMultiplayer.start(callback); });
+  }
+})(typeof window !== 'undefined' ? window : globalThis);
