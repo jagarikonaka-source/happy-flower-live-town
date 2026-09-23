@@ -3,8 +3,10 @@
   "town": "happy flower Live town",
   "administrator": "EMPEROR_YAMATO",
   "baseHiplinRelease": "001f820a65be20b10e7c794380198384372944b1",
-  "builtAtUtc": "2026-09-22T00:55:47.664814+00:00",
+  "builtAtUtc": "2026-09-23T10:40:44.735516+00:00",
   "features": [
+    "designer-v002-r02",
+    "six-petal-layout",
     "flower-live-square",
     "music",
     "cafe",

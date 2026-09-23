@@ -1,8 +1,8 @@
 [
   {
     "path": "Build/HappyFlowerLive/HappyFlowerLiveTown.data.unityweb",
-    "size": 196280993,
-    "sha256": "db4bfea3f857f14fb65c365a75dbf6fec0c07352610cebc3799e52a397a7be27",
+    "size": 76079343,
+    "sha256": "c9eae8ac957e30b9ce940dfcd0e2c3c991f28d7beb2490a222a1a36093f64bff",
     "parts": [
       "9cb4ad7bb53e286f.000.part",
       "9cb4ad7bb53e286f.001.part",
@@ -10,16 +10,7 @@
       "9cb4ad7bb53e286f.003.part",
       "9cb4ad7bb53e286f.004.part",
       "9cb4ad7bb53e286f.005.part",
-      "9cb4ad7bb53e286f.006.part",
-      "9cb4ad7bb53e286f.007.part",
-      "9cb4ad7bb53e286f.008.part",
-      "9cb4ad7bb53e286f.009.part",
-      "9cb4ad7bb53e286f.010.part",
-      "9cb4ad7bb53e286f.011.part",
-      "9cb4ad7bb53e286f.012.part",
-      "9cb4ad7bb53e286f.013.part",
-      "9cb4ad7bb53e286f.014.part",
-      "9cb4ad7bb53e286f.015.part"
+      "9cb4ad7bb53e286f.006.part"
     ]
   },
   {
